@@ -22,7 +22,6 @@
       overflow-x: hidden;
     }
 
-    /* Animated background stars */
     body::before {
       content: '✨';
       position: fixed;
@@ -383,21 +382,15 @@
 
     <div id="bingoGrid"></div>
 
-    <p class="version">Version 1.0</p>
+    <p class="version">Version 1.1 - Debug</p>
   </main>
 
   <script>
-// =====================
-// Config
-// =====================
 const rows = 5;
 const cols = 6;
 const totalCells = rows * cols;
 const apiUrl = 'https://tyradex.app/api/v1/pokemon';
 
-// =====================
-// DOM
-// =====================
 const bingoGrid = document.getElementById('bingoGrid');
 const pokemonSelect = document.getElementById('pokemonSelect');
 const addPokeBtn = document.getElementById('addPokeBtn');
@@ -411,9 +404,6 @@ const messageEl = document.getElementById('message');
 let allPokemonData = [];
 let bingoState = [];
 
-// =====================
-// Utils
-// =====================
 function normalize(str) {
   return String(str || "")
     .toLowerCase()
@@ -422,7 +412,6 @@ function normalize(str) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// Détecter la région dans un nom
 function detectRegion(name) {
   const n = normalize(name);
   if (n.includes("dalola") || n.includes("alola")) return "alola";
@@ -432,21 +421,16 @@ function detectRegion(name) {
   return null;
 }
 
-// Détecter si c'est une méga-évolution
 function detectMega(name) {
   const n = normalize(name);
-  return n.includes("mega") || n.startsWith("m");
+  return n.includes("mega");
 }
 
-// Construire l'URL du sprite régional
 function buildRegionalSprite(pokedexId, region, shiny = true) {
   const type = shiny ? "shiny" : "regular";
   return `https://raw.githubusercontent.com/Yarkis01/TyraDex/images/sprites/${pokedexId}/${type}_${region}.png`;
 }
 
-// =====================
-// Fetch API
-// =====================
 fetch(apiUrl)
   .then(r => r.json())
   .then(data => {
@@ -463,9 +447,6 @@ fetch(apiUrl)
     initGridEmpty();
   });
 
-// =====================
-// Select Pokémon
-// =====================
 function populateSelect() {
   const select = pokemonSelect;
   select.innerHTML = "";
@@ -480,23 +461,22 @@ function populateSelect() {
   allPokemonData.forEach(p => {
     const baseName = p.name?.fr || p.name?.en || `ID ${p.pokedex_id}`;
     
-    // Forme régionale si présente
+    allOptions.push({
+      id: p.pokedex_id,
+      name: baseName,
+      region: null,
+      sortKey: baseName
+    });
+    
     if (p.formes && p.formes.length > 0) {
-      const forme = p.formes[0];
-      const displayName = forme.name?.fr || baseName;
-      allOptions.push({
-        id: p.pokedex_id,
-        name: displayName,
-        region: forme.region,
-        sortKey: displayName
-      });
-    } else {
-      // Forme normale
-      allOptions.push({
-        id: p.pokedex_id,
-        name: baseName,
-        region: null,
-        sortKey: baseName
+      p.formes.forEach(forme => {
+        const displayName = forme.name?.fr || `${baseName} (${forme.region})`;
+        allOptions.push({
+          id: p.pokedex_id,
+          name: displayName,
+          region: forme.region,
+          sortKey: displayName
+        });
       });
     }
   });
@@ -515,9 +495,6 @@ function populateSelect() {
   });
 }
 
-// =====================
-// Init grille
-// =====================
 function initGridEmpty() {
   bingoState = Array.from({ length: totalCells }, () => ({
     name: '',
@@ -529,9 +506,6 @@ function initGridEmpty() {
   updateStatus();
 }
 
-// =====================
-// Render grille
-// =====================
 function renderGrid() {
   bingoGrid.innerHTML = "";
 
@@ -573,15 +547,29 @@ function createEmptyCell(cell, cellData, index) {
 }
 
 function createFilledCell(cell, cellData, index) {
+  console.log("📦 createFilledCell appelé avec:", {
+    name: cellData.name,
+    id: cellData.id,
+    region: cellData.region
+  });
+  
   const res = rechercheParNomOuId(cellData.id, cellData.name, cellData.region);
+  
+  console.log("🔍 Résultat de la recherche:", res);
 
   const img = document.createElement("img");
   img.className = "poke-img";
   img.alt = cellData.name;
-  img.src =
-    res?.sprites?.shiny ||
-    res?.sprites?.regular ||
-    "";
+  
+  let spriteUrl = "";
+  if (res?.sprites?.shiny) {
+    spriteUrl = res.sprites.shiny;
+  } else if (res?.sprites?.regular) {
+    spriteUrl = res.sprites.regular;
+  }
+  
+  console.log("🖼️ URL du sprite:", spriteUrl);
+  img.src = spriteUrl;
 
   const nameEl = document.createElement("div");
   nameEl.className = "poke-name";
@@ -603,9 +591,6 @@ function createFilledCell(cell, cellData, index) {
   cell.appendChild(checkBtn);
 }
 
-// =====================
-// Boutons
-// =====================
 addPokeBtn.addEventListener('click', () => {
   const sel = pokemonSelect.selectedOptions[0];
   if (!sel || !sel.value) {
@@ -614,6 +599,7 @@ addPokeBtn.addEventListener('click', () => {
   }
   const frName = sel.dataset.fr;
   const region = sel.dataset.region || '';
+  console.log("➕ Ajout du Pokémon:", {frName, id: sel.value, region});
   const idx = bingoState.findIndex(c => !c.name);
   if (idx === -1) {
     messageEl.textContent = "La grille est déjà pleine.";
@@ -662,21 +648,18 @@ fileInput.addEventListener('change', (e) => {
     try {
       const data = JSON.parse(event.target.result);
       
-      // Vérifier que c'est un tableau
       if (!Array.isArray(data)) {
         messageEl.textContent = '❌ Format JSON invalide : doit être un tableau.';
         messageEl.style.color = '#f5576c';
         return;
       }
 
-      // Vérifier la longueur
       if (data.length !== totalCells) {
         messageEl.textContent = `❌ Le fichier doit contenir exactement ${totalCells} cases (trouvé: ${data.length}).`;
         messageEl.style.color = '#f5576c';
         return;
       }
 
-      // Charger les données
       bingoState = data.map(cell => ({
         name: cell.name || '',
         id: cell.id || '',
@@ -688,8 +671,6 @@ fileInput.addEventListener('change', (e) => {
       updateStatus();
       messageEl.textContent = '✅ Bingo chargé avec succès !';
       messageEl.style.color = '#00b894';
-      
-      // Réinitialiser l'input pour permettre de charger le même fichier
       fileInput.value = '';
       
     } catch (err) {
@@ -707,19 +688,20 @@ fileInput.addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
-// =====================
-// Logique bingo
-// =====================
 function setCellPokemon(index, name, id = '', region = '') {
-  // Si pas de région fournie, essayer de la détecter dans le nom
   if (!region) {
     region = detectRegion(name);
   }
+  
+  console.log("💾 setCellPokemon:", {index, name, id, region});
   
   bingoState[index].name = name;
   bingoState[index].id = id || findIdByName(name) || '';
   bingoState[index].region = region || '';
   bingoState[index].checked = false;
+  
+  console.log("💾 bingoState[index] après mise à jour:", bingoState[index]);
+  
   renderGrid();
   updateStatus();
 }
@@ -749,19 +731,19 @@ function isComplete() {
   return bingoState.every(c => c.checked);
 }
 
-// =====================
-// 🔍 Recherche Tyradex + formes régionales
-// =====================
 function rechercheParNomOuId(idOrName, fallbackName, region) {
-  if (!allPokemonData || allPokemonData.length === 0) return null;
+  console.log("🔎 rechercheParNomOuId appelé avec:", {idOrName, fallbackName, region});
+  
+  if (!allPokemonData || allPokemonData.length === 0) {
+    console.log("❌ Pas de données Pokémon");
+    return null;
+  }
 
   const rawName = fallbackName || idOrName;
   const key = normalize(rawName);
   
-  // Vérifier si c'est une méga-évolution
-  const isMega = key.includes("mega") || key.startsWith("m");
+  const isMega = key.includes("mega");
   
-  // Nettoyer le nom en enlevant les mots régionaux et mega
   const cleanedKey = key
     .replace("dalola", "")
     .replace("dealola", "")
@@ -772,27 +754,27 @@ function rechercheParNomOuId(idOrName, fallbackName, region) {
     .replace("dpaldea", "")
     .replace("depaldea", "")
     .replace("mega", "")
-    .replace(/^m/, "")
     .trim();
 
-  // Chercher le Pokémon de base
+  console.log("🧹 Nom nettoyé:", cleanedKey);
+
   let basePokemon = null;
   
-  // Par ID
   if (idOrName && !isNaN(idOrName)) {
     basePokemon = allPokemonData.find(p => 
-      String(p.pokedex_id) === String(idOrName) &&
-      (!p.formes || p.formes.length === 0)
+      String(p.pokedex_id) === String(idOrName)
     );
+    console.log("🔢 Recherche par ID:", idOrName, "trouvé:", !!basePokemon);
   }
   
-  // Par nom nettoyé
   if (!basePokemon) {
     const candidates = allPokemonData.filter(p => {
       const nameFr = normalize(p.name?.fr || "");
       const nameEn = normalize(p.name?.en || "");
       return nameFr === cleanedKey || nameEn === cleanedKey;
     });
+    
+    console.log("🎯 Candidats trouvés:", candidates.length);
     
     basePokemon = candidates.find(p => !p.formes || p.formes.length === 0);
     
@@ -802,18 +784,20 @@ function rechercheParNomOuId(idOrName, fallbackName, region) {
   }
 
   if (!basePokemon) {
+    console.log("❌ Pokémon de base non trouvé");
     return null;
   }
 
-  // Si méga-évolution
+  console.log("✅ Pokémon trouvé:", basePokemon.name?.fr, "ID:", basePokemon.pokedex_id);
+
   if (isMega && basePokemon.evolution?.mega) {
     const megas = Array.isArray(basePokemon.evolution.mega) 
       ? basePokemon.evolution.mega 
       : [basePokemon.evolution.mega];
     
     if (megas.length > 0) {
-      // Prendre la première méga par défaut
       const mega = megas[0];
+      console.log("🔷 Méga-évolution:", mega.sprites);
       return {
         sprites: mega.sprites,
         name: "Méga-" + (basePokemon.name?.fr || basePokemon.name?.en)
@@ -821,18 +805,32 @@ function rechercheParNomOuId(idOrName, fallbackName, region) {
     }
   }
 
-  // Si région, construire les URLs régionales
   if (region) {
+    console.log("🌍 Forme régionale demandée:", region);
+    
+    if (basePokemon.formes && basePokemon.formes.length > 0) {
+      const forme = basePokemon.formes.find(f => f.region === region);
+      if (forme && forme.sprites) {
+        console.log("✅ Forme trouvée dans l'API avec sprites:", forme.sprites);
+        return {
+          sprites: forme.sprites,
+          name: forme.name?.fr || basePokemon.name?.fr
+        };
+      }
+    }
+    
+    const manualSprites = {
+      shiny: buildRegionalSprite(basePokemon.pokedex_id, region, true),
+      regular: buildRegionalSprite(basePokemon.pokedex_id, region, false)
+    };
+    console.log("🔨 Construction manuelle des sprites:", manualSprites);
     return {
-      sprites: {
-        shiny: buildRegionalSprite(basePokemon.pokedex_id, region, true),
-        regular: buildRegionalSprite(basePokemon.pokedex_id, region, false)
-      },
+      sprites: manualSprites,
       name: basePokemon.name?.fr || basePokemon.name?.en
     };
   }
 
-  // Sinon, retourner la forme normale
+  console.log("📷 Sprites forme normale:", basePokemon.sprites);
   return {
     sprites: basePokemon.sprites,
     name: basePokemon.name?.fr || basePokemon.name?.en
@@ -850,6 +848,7 @@ function findIdByName(name) {
     .replace("dehisui", "")
     .replace("dpaldea", "")
     .replace("depaldea", "")
+    .replace("mega", "")
     .trim();
 
   const p = allPokemonData.find(p => {
